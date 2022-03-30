@@ -31,29 +31,37 @@
  * POSSIBILITY OF SUCH DAMAGE.
  * #L%
  */
-package net.imglib2.labeling.data;
+package io.scif.labeling.tutorials;
 
-import net.imglib2.roi.labeling.ImgLabeling;
-import net.imglib2.type.numeric.IntegerType;
+import org.bson.BsonReader;
+import org.bson.BsonWriter;
+import org.bson.codecs.Codec;
+import org.bson.codecs.DecoderContext;
+import org.bson.codecs.EncoderContext;
 
-public class Container<S, T, I extends IntegerType<I>> {
+class ExampleCodec implements Codec<Example> {
 
-    ImgLabeling<T, I> imgLabeling;
-    S metadata;
-
-    public ImgLabeling<T, I> getImgLabeling() {
-        return imgLabeling;
+    @Override
+    public Example decode(BsonReader reader, DecoderContext decoderContext) {
+        reader.readStartDocument();
+        String a = reader.readString("a");
+        double b = reader.readDouble("b");
+        int c = reader.readInt32("c");
+        reader.readEndDocument();
+        return new Example(a, b, c);
     }
 
-    public void setImgLabeling(ImgLabeling<T, I> imgLabeling) {
-        this.imgLabeling = imgLabeling;
+    @Override
+    public void encode(BsonWriter writer, Example value, EncoderContext encoderContext) {
+        writer.writeStartDocument();
+        writer.writeString("a", value.a);
+        writer.writeDouble("b", value.b);
+        writer.writeInt32("c", value.c);
+        writer.writeEndDocument();
     }
 
-    public S getMetadata() {
-        return metadata;
-    }
-
-    public void setMetadata(S metadata) {
-        this.metadata = metadata;
+    @Override
+    public Class<Example> getEncoderClass() {
+        return Example.class;
     }
 }

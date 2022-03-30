@@ -31,20 +31,23 @@
  * POSSIBILITY OF SUCH DAMAGE.
  * #L%
  */
-package net.imglib2.labeling.codecs;
+package io.scif.labeling.codecs;
 
+import io.scif.labeling.utils.LabelingUtil;
 import io.scif.services.DatasetIOService;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.img.Img;
-import net.imglib2.labeling.data.Container;
-import net.imglib2.labeling.utils.LabelingUtil;
+import io.scif.labeling.data.LabelingContainer;
 import net.imglib2.roi.labeling.ImgLabeling;
 import net.imglib2.roi.labeling.LabelingMapping;
 import net.imglib2.type.logic.BoolType;
 import net.imglib2.type.numeric.IntegerType;
 import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.LongType;
-import org.bson.*;
+import org.bson.BsonArray;
+import org.bson.BsonReader;
+import org.bson.BsonType;
+import org.bson.BsonWriter;
 import org.bson.codecs.Codec;
 import org.bson.codecs.DecoderContext;
 import org.bson.codecs.EncoderContext;
@@ -58,10 +61,8 @@ import java.util.function.LongFunction;
 import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 
-import static net.imglib2.labeling.utils.LabelingUtil.TIF_ENDING;
-
 /**
- * A codec (encoder/decoder) for the LabelingMapping class to and from the BSON (binary JSON) data type.
+ * A codec (encoder/decoder) for the ImgLabeling class to and from the BSON (binary JSON) data type.
  * The resulting data structure consists of the number of sets, a mapping from complex type to integer
  * as well as the actual label sets. The Codec class is used in the LabelingIO class and handles
  * the basic structure. For non-primitive label types, an additional codec must be written.
@@ -84,12 +85,11 @@ import static net.imglib2.labeling.utils.LabelingUtil.TIF_ENDING;
  *
  * @author Tom Burke
  */
-public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Codec<Container<S, T, I>> {
+public class ImgLabelingCodec<T, I extends IntegerType<I>> implements Codec<ImgLabeling<T, I>> {
     private final static int VERSION = 1;
     private static final Set<Class> WRAPPER_TYPES = new HashSet(Arrays.asList(IntType.class, LongType.class, BoolType.class,
             Boolean.class, Character.class, Byte.class, Short.class, Integer.class, Long.class, Float.class, Double.class, Void.class, String.class));
-    private final Class<T> clazz;
-    private final Class<S> metadataClazz;
+    private final Class clazz;
     private CodecRegistry codecRegistry;
     private String indexImg;
     private LongFunction<T> idToLabel;
@@ -97,15 +97,15 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
     private DatasetIOService datasetIOService;
     private Path file;
 
-    private LabelingMappingCodec(final Builder<S, T, I> builder) {
+    private ImgLabelingCodec(final Builder<T, I> builder) {
         this.clazz = builder.clazz;
-        this.metadataClazz = builder.metadataClazz;
         this.codecRegistry = builder.codecRegistry;
         this.indexImg = builder.indexImg;
         this.idToLabel = builder.idToLabel;
         this.labelToId = builder.labelToId;
         this.datasetIOService = builder.datasetIOService;
         this.file = builder.file;
+
     }
 
     public static boolean isWrapperType(Class clazz) {
@@ -113,7 +113,7 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
     }
 
     @Override
-    public Container<S, T, I>  decode(BsonReader reader, DecoderContext decoderContext) {
+    public ImgLabeling<T, I> decode(BsonReader reader, DecoderContext decoderContext) {
         LabelingMapping<T> labelingMapping = new LabelingMapping<>(new IntType());
         String path = this.file.getParent().toString();
         reader.readStartDocument();
@@ -122,20 +122,19 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
         int numSources = reader.readInt32("numSources");
         this.indexImg = reader.readString("indexImg");
 
-
+        Map<Integer, T> mapping = readMapping(reader, decoderContext, clazz);
+        List<Set<T>> labelSets = readLabelSets(reader, decoderContext, numSets, numSources, mapping);
         RandomAccessibleInterval<I> img = null;
         try {
-            img = (Img<I>) datasetIOService.open(LabelingUtil.getFilePathWithExtension(indexImg, TIF_ENDING, path)).getImgPlus().getImg();
+            img = (Img<I>) datasetIOService.open( LabelingUtil.getFilePathWithExtension(indexImg, LabelingUtil.TIF_ENDING, path)).getImgPlus().getImg();
         } catch (IOException e) {
             e.printStackTrace();
         }
-        Map<Integer, T> mapping = readMapping(reader, decoderContext, clazz);
-        Container<S, T, I>  container = readLabelSetsContainer(reader, decoderContext, numSets, numSources, mapping, img);
-        return container;
+        return ImgLabeling.fromImageAndLabelSets(img,  labelSets);
     }
 
-    private Container<S, T, I> readLabelSetsContainer(BsonReader reader, DecoderContext decoderContext, int numSets, int numSources, Map<Integer, T> mapping, RandomAccessibleInterval<I> img) {
-        Container container = new Container<>();
+    private List<Set<T>> readLabelSets(BsonReader reader, DecoderContext decoderContext, int numSets, int numSources, Map<Integer, T> mapping) {
+        LabelingContainer container = new LabelingContainer<>();
         List<Set<T>> labelSets = new ArrayList<>();
         reader.readStartDocument();
         for (int i = 0; i < numSets; i++) {
@@ -151,10 +150,8 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
             labelSets.add(labelSet);
         }
         reader.readEndDocument();
-        container.setImgLabeling(ImgLabeling.fromImageAndLabelSets(img, labelSets));
-        S metadata = getCodecRegistry().get(metadataClazz).decode(reader,decoderContext);
-        container.setMetadata(metadata);
-        return container;
+        container.setLabelSets(labelSets);
+        return labelSets;
     }
 
     private Set<T> readLabelSet(BsonReader reader, DecoderContext decoderContext, Map<Integer, T> mapping) {
@@ -178,20 +175,21 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
     }
 
     @Override
-    public void encode(BsonWriter writer, Container<S, T, I> value, EncoderContext encoderContext) {
+    public void encode(BsonWriter writer, ImgLabeling<T, I> value, EncoderContext encoderContext) {
+        LabelingMapping<T> labelingMapping = value.getMapping();
         writer.writeStartDocument();
         writer.writeInt32("version", VERSION);
-        writer.writeInt32("numSets", value.getImgLabeling().getMapping().numSets());
+        writer.writeInt32("numSets", labelingMapping.numSets());
         writer.writeInt32("numSources", 1);
         writer.writeString("indexImg", indexImg);
-        Optional<T> first = value.getImgLabeling().getMapping().getLabels().stream().findFirst();
+        Optional<T> first = labelingMapping.getLabels().stream().findFirst();
         if (first.isPresent() && !isWrapperType(first.get().getClass())) {
             if (clazz == null) {
                 writer.writeStartDocument("labelMapping");
                 writer.writeEndDocument();
                 writer.writeStartDocument("labelSets");
-                for (int i = 0; i < value.getImgLabeling().getMapping().numSets(); i++) {
-                    Set<T> labelSet = value.getImgLabeling().getMapping().labelsAtIndex(i);
+                for (int i = 0; i < labelingMapping.numSets(); i++) {
+                    Set<T> labelSet = labelingMapping.labelsAtIndex(i);
                     writer.writeStartArray(Integer.toString(i));
                     labelSet.forEach(v -> writeValue(labelToId.applyAsLong(v), writer, encoderContext));
                     writer.writeEndArray();
@@ -201,7 +199,7 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
                 AtomicInteger count = new AtomicInteger();
                 HashMap<T, Integer> map = new HashMap<>();
                 writer.writeStartDocument("labelMapping");
-                value.getImgLabeling().getMapping().getLabels().forEach(v -> {
+                labelingMapping.getLabels().forEach(v -> {
                     map.put(v, count.get());
                     writer.writeName(String.valueOf(count.getAndIncrement()));
                     Codec<T> codec = (Codec<T>) codecRegistry.get(v.getClass());
@@ -209,8 +207,8 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
                 });
                 writer.writeEndDocument();
                 writer.writeStartDocument("labelSets");
-                for (int i = 0; i < value.getImgLabeling().getMapping().numSets(); i++) {
-                    Set<T> labelSet = value.getImgLabeling().getMapping().labelsAtIndex(i);
+                for (int i = 0; i < labelingMapping.numSets(); i++) {
+                    Set<T> labelSet = labelingMapping.labelsAtIndex(i);
                     writer.writeStartArray(Integer.toString(i));
                     labelSet.forEach(v -> writeValue(map.get(v), writer, encoderContext));
                     writer.writeEndArray();
@@ -221,16 +219,14 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
             writer.writeStartDocument("labelMapping");
             writer.writeEndDocument();
             writer.writeStartDocument("labelSets");
-            for (int i = 0; i < value.getImgLabeling().getMapping().numSets(); i++) {
-                Set<T> labelSet = value.getImgLabeling().getMapping().labelsAtIndex(i);
+            for (int i = 0; i < labelingMapping.numSets(); i++) {
+                Set<T> labelSet = labelingMapping.labelsAtIndex(i);
                 writer.writeStartArray(Integer.toString(i));
                 labelSet.forEach(v -> writeValue(v, writer, encoderContext));
                 writer.writeEndArray();
             }
             writer.writeEndDocument();
         }
-        writer.writeName("metadata");
-        getCodecRegistry().get(metadataClazz).encode(writer, value.getMetadata(), encoderContext);
         writer.writeEndDocument();
     }
 
@@ -280,8 +276,8 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
     }
 
     @Override
-    public Class<Container<S, T, I> > getEncoderClass() {
-        return (Class<Container<S, T, I> >) new Container<S, T, I> ().getClass();
+    public Class<ImgLabeling<T, I>> getEncoderClass() {
+        return (Class<ImgLabeling<T, I>>) ImgLabeling.fromImageAndLabels(null, null).getClass();
     }
 
     public Class getClazz() {
@@ -320,9 +316,7 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
         this.labelToId = labelToId;
     }
 
-    public static final class Builder<S, T, I extends IntegerType<I>> {
-
-        private Class<S> metadataClazz;
+    public static final class Builder<T, I extends IntegerType<I>> {
 
         private Path file;
 
@@ -346,17 +340,17 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
          * @param clazz the class that represents a label
          * @return a Builder for a LabelingMappingCodec
          */
-        public Builder<S, T, I> setClazz(final Class<T> clazz) {
+        public Builder<T, I> setClazz(final Class<T> clazz) {
             this.clazz = clazz;
             return this;
         }
 
-        public Builder<S, T, I> setCodecRegistry(final CodecRegistry codecRegistry) {
+        public Builder<T, I> setCodecRegistry(final CodecRegistry codecRegistry) {
             this.codecRegistry = codecRegistry;
             return this;
         }
 
-        public Builder<S, T, I> setIndexImg(final String indexImg) {
+        public Builder<T, I> setIndexImg(final String indexImg) {
             this.indexImg = indexImg;
             return this;
         }
@@ -368,7 +362,7 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
          * @param idToLabel the decoding labeling function
          * @return a Builder for a LabelingMappingCodec
          */
-        public Builder<S, T, I> setIdToLabel(final LongFunction<T> idToLabel) {
+        public Builder<T, I> setIdToLabel(final LongFunction<T> idToLabel) {
             this.idToLabel = idToLabel;
             return this;
         }
@@ -380,7 +374,7 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
          * @param labelToId the encoding labeling function
          * @return a Builder for a LabelingMappingCodec
          */
-        public Builder<S, T, I> setLabelToId(final ToLongFunction<T> labelToId) {
+        public Builder<T, I> setLabelToId(final ToLongFunction<T> labelToId) {
             this.labelToId = labelToId;
             return this;
         }
@@ -390,33 +384,23 @@ public class LabelingMappingCodec<S, T, I extends IntegerType<I>> implements Cod
          * @param file the fully qualified path to the file
          * @return a Builder for a LabelingMappingCodec
          */
-        public Builder<S, T, I> setFile(Path file) {
+        public Builder<T, I> setFile(Path file) {
             this.file = file;
             return this;
         }
 
         /**
          * Set the datasetIO Service to use. Can be accessed through the current context.
-         * @param datasetIOService  the datasetIO Service to use
+         * @param datasetIOService  a scijava dataetIOService gotten through the context
          * @return a Builder for a LabelingMappingCodec
          */
-        public Builder<S, T, I> setDatasetIOService(DatasetIOService datasetIOService) {
+        public Builder<T, I> setDatasetIOService(DatasetIOService datasetIOService) {
             this.datasetIOService = datasetIOService;
             return this;
         }
 
-        /**
-         * the class of the metadata that is contained in the file. also needs a codec to decode
-         * @param metadataClazz     the metadata class to use
-         * @return a Builder for a LabelingMappingCodec
-         */
-        public Builder<S, T, I> setMetadataClazz(Class<S> metadataClazz) {
-            this.metadataClazz = metadataClazz;
-            return this;
-        }
-
-        public LabelingMappingCodec<S, T, I> build() {
-            return new LabelingMappingCodec<>(this);
+        public ImgLabelingCodec<T, I> build() {
+            return new ImgLabelingCodec<T, I>(this);
         }
 
     }

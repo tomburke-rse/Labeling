@@ -31,12 +31,12 @@
  * POSSIBILITY OF SUCH DAMAGE.
  * #L%
  */
-package net.imglib2.labeling;
+package io.scif.labeling;
 
+import io.scif.labeling.codecs.LabelingMappingCodec;
 import net.imglib2.img.Img;
 import net.imglib2.img.array.ArrayImgs;
-import net.imglib2.labeling.codecs.LabelingMappingCodec;
-import net.imglib2.labeling.data.Container;
+import io.scif.labeling.data.Container;
 import net.imglib2.roi.labeling.ImgLabeling;
 import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;

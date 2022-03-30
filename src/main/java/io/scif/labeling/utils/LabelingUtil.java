@@ -31,7 +31,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  * #L%
  */
-package net.imglib2.labeling.utils;
+package io.scif.labeling.utils;
 
 import io.scif.config.SCIFIOConfig;
 import io.scif.img.ImgIOException;

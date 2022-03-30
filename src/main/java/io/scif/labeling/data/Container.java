@@ -31,59 +31,29 @@
  * POSSIBILITY OF SUCH DAMAGE.
  * #L%
  */
-package net.imglib2.labeling.data;
+package io.scif.labeling.data;
 
-import net.imglib2.roi.labeling.LabelingMapping;
+import net.imglib2.roi.labeling.ImgLabeling;
+import net.imglib2.type.numeric.IntegerType;
 
-import java.util.*;
+public class Container<S, T, I extends IntegerType<I>> {
 
-public class LabelingContainer<T> {
+    ImgLabeling<T, I> imgLabeling;
+    S metadata;
 
-    List<Set<T>> labelSets;
-    Map<String, Set<T>> sourceToLabel = new HashMap<>();
-    LabelingMapping<T> labelingMapping;
-
-
-    public LabelingContainer(List<Set<T>> labelSets, Map<String, Set<T>> sourceToLabel, LabelingMapping<T> labelingMapping) {
-        this.labelSets = labelSets;
-        this.sourceToLabel = sourceToLabel;
-        this.labelingMapping = labelingMapping;
+    public ImgLabeling<T, I> getImgLabeling() {
+        return imgLabeling;
     }
 
-    public LabelingContainer() {
-
+    public void setImgLabeling(ImgLabeling<T, I> imgLabeling) {
+        this.imgLabeling = imgLabeling;
     }
 
-    public void addLabelToSource(String source, T label) {
-        sourceToLabel.putIfAbsent(source, new HashSet<>());
-        sourceToLabel.get(source).add(label);
+    public S getMetadata() {
+        return metadata;
     }
 
-    public List<Set<T>> getLabelSets() {
-        return labelSets;
-    }
-
-    public void setLabelSets(List<Set<T>> labelSets) {
-        if (labelingMapping != null)
-            labelingMapping.setLabelSets(labelSets);
-        this.labelSets = labelSets;
-    }
-
-    public Map<String, Set<T>> getSourceToLabel() {
-        return sourceToLabel;
-    }
-
-    public void setSourceToLabel(Map<String, Set<T>> sourceToLabel) {
-        this.sourceToLabel = sourceToLabel;
-    }
-
-    public LabelingMapping<T> getLabelingMapping() {
-        return labelingMapping;
-    }
-
-    public void setLabelingMapping(LabelingMapping<T> labelingMapping) {
-        this.labelingMapping = labelingMapping;
-        if (labelSets != null)
-            labelingMapping.setLabelSets(labelSets);
+    public void setMetadata(S metadata) {
+        this.metadata = metadata;
     }
 }

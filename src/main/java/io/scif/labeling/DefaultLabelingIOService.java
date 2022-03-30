@@ -31,16 +31,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  * #L%
  */
-package net.imglib2.labeling;
+package io.scif.labeling;
 
+import io.scif.labeling.codecs.ImgLabelingCodec;
+import io.scif.labeling.codecs.LabelingMappingCodec;
+import io.scif.labeling.data.Container;
+import io.scif.labeling.utils.LabelingUtil;
 import io.scif.services.DatasetIOService;
 import net.imagej.ImageJService;
 import net.imglib2.img.Img;
 import net.imglib2.img.ImgView;
-import net.imglib2.labeling.codecs.ImgLabelingCodec;
-import net.imglib2.labeling.codecs.LabelingMappingCodec;
-import net.imglib2.labeling.data.Container;
-import net.imglib2.labeling.utils.LabelingUtil;
 import net.imglib2.roi.labeling.ImgLabeling;
 import net.imglib2.type.numeric.IntegerType;
 import org.bson.BsonBinaryReader;
@@ -81,7 +81,7 @@ public class DefaultLabelingIOService extends AbstractService implements Labelin
     }
 
     public <T, I extends IntegerType<I>> ImgLabeling<T, I> load(String file) throws IOException {
-        ImgLabelingCodec<T, I> imgLabelingCodec = new ImgLabelingCodec.Builder<T, I>().setIndexImg(LabelingUtil.getFilePathWithExtension(file, LabelingUtil.TIF_ENDING, ""))
+        ImgLabelingCodec<T, I> imgLabelingCodec = new ImgLabelingCodec.Builder<T, I>().setIndexImg( LabelingUtil.getFilePathWithExtension(file, LabelingUtil.TIF_ENDING, ""))
                 .setCodecRegistry(registry).setFile(Paths.get(file)).setDatasetIOService(datasetIOService).build();
         RandomAccessFile aFile = new RandomAccessFile(LabelingUtil.getFilePathWithExtension(file, LabelingUtil.BSON_ENDING, Paths.get(file).getParent().toString()), "r");
         FileChannel inChannel = aFile.getChannel();
